@@ -1,76 +1,36 @@
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/cloudflare/templates/tree/main/email-routing-template)
+# CREW Email Trigger Pilot
 
-# Email Routing Worker
+This repository deploys the existing Cloudflare Worker `email-routing-template`
+as a **test-only**, inbound Email Routing handler for `alerts@crew-ops.dev`.
 
-Forward incoming email from approved senders to a verified destination address with Cloudflare Email Routing.
+## Safety boundary
 
-<!-- dash-content-start -->
+- No forwarding, auto-replies, external API calls, webhook dispatch, or downstream triggers.
+- No message body or full sender address is logged or persisted.
+- Only subjects beginning with `CREW-TEST` are logged; all other email is discarded.
+- Logs contain the recipient, sender domain, Message-ID and raw message size.
+- The HTTP `/health` endpoint gives test-only status; all other paths return 404.
+- Cloudflare Email Routing catch-all must stay set to **Drop**.
+- Email sender addresses are not proof of authentication. Do not connect operational
+  alert sources to this pilot until sender validation, deduplication, monitoring
+  and retention are reviewed.
+- The routing rule for `alerts@crew-ops.dev` is created manually in Cloudflare's
+  Email Routing UI. No Wrangler `addresses` entry is defined.
 
-This starter uses an Email Worker to forward messages from a configurable sender allowlist to one verified destination. Its top-level Wrangler `addresses` configuration creates and maintains the Email Routing rules that invoke the Worker.
+## Verification
 
-The Worker rejects messages from unapproved senders and fails closed when its destination or allowlist is missing.
+Run `npm ci`, `npm test`, and `npm run check`.
 
-It uses [Email Routing](https://developers.cloudflare.com/email-service/email-routing/) for inbound delivery, a [Workers email handler](https://developers.cloudflare.com/email-service/api/route-emails/email-handler/) for forwarding decisions, and [Workers Assets](https://developers.cloudflare.com/workers/static-assets/) for the setup page.
+## Deployment
 
-<!-- dash-content-end -->
+This repo was connected to Cloudflare automatic deployments before this change.
+Changes should be reviewed on a branch and merged only after checks pass.
+The Wrangler Worker name intentionally remains `email-routing-template`
+to update the existing Worker rather than create another one.
 
-![Email Routing Worker setup page](./preview.png)
+After deployment, create the Cloudflare Email Routing rule:
+`alerts@crew-ops.dev` → **Send to a Worker** → `email-routing-template`.
 
-## How it works
-
-1. Email Routing receives a message for an address declared in `wrangler.jsonc`.
-2. The Worker compares the SMTP envelope sender with `ALLOWED_SENDERS`.
-3. Approved messages are forwarded to `FORWARD_TO`; all other messages are rejected.
-
-The template uses TypeScript without an application framework. Its `ASSETS` binding serves the static setup page, while the email event handler processes incoming messages.
-
-## Prerequisites
-
-- A domain on Cloudflare with Email Routing enabled.
-- A verified Email Routing destination address.
-
-## Configure the Worker
-
-Set these variables in `wrangler.jsonc` or during deployment:
-
-- `ROUTE_ADDRESS`: The Email Routing address shown on the setup page. Keep it in sync with the top-level `addresses` configuration.
-- `FORWARD_TO`: The verified destination that receives forwarded messages.
-- `ALLOWED_SENDERS`: A comma-separated list of sender addresses allowed to use the route.
-
-Then uncomment the top-level `addresses` section in `wrangler.jsonc` and replace its example address:
-
-```jsonc
-"addresses": ["support@company.example"]
-```
-
-Use `"*@company.example"` instead to route every otherwise-unmatched address on a domain to this Worker.
-
-The setup page displays `ROUTE_ADDRESS` and `FORWARD_TO`, and indicates whether an allowlist exists without exposing its contents. It also warns while any email setting still contains example data.
-
-The `addresses` field is managed by Wrangler. On deployment, Wrangler reconciles Email Routing rules for this Worker with the configured list. Review destructive changes carefully before accepting them.
-
-## Develop locally
-
-```sh
-npm install
-npm run dev
-```
-
-The local HTTP page shows setup guidance. To test incoming email handling, use the Email Routing local-development instructions in the [Cloudflare documentation](https://developers.cloudflare.com/email-service/local-development/routing/).
-
-A live preview is provisioned during template review at [email-routing-template.templates.workers.dev](https://email-routing-template.templates.workers.dev).
-
-## Test
-
-```sh
-npm test
-npm run check
-```
-
-## Deploy
-
-```sh
-npm run deploy
-```
-
-After deployment, send a message from an address in `ALLOWED_SENDERS` to one of the configured routing addresses.
+Send an innocuous email with subject `CREW-TEST: first delivery` to that
+address and check Worker Observability logs for `crew-email-test-received`.
+Do not enable live alert sources yet.
